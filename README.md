@@ -463,12 +463,75 @@ for result in results:
 4. **Настройте backup** для `qdrant_data` и `webui_data`
 5. **Мониторинг** через Prometheus/Grafana
 
+## 📝 TODO / Планы развития
+
+### Переход на PostgreSQL с pgvector
+
+**Зачем:**
+- Снижение затрат на инфраструктуру (один сервис вместо отдельной Qdrant БД)
+- Унификация хранения данных (метаданные + векторы в одной СУБД)
+- Возможность использования стандартных PostgreSQL инструментов для backup/restore
+- Поддержка сложных SQL-запросов для фильтрации
+
+**Что нужно:**
+
+1. **Добавить PostgreSQL контейнер в docker-compose.yaml:**
+   ```yaml
+   postgres:
+     image: pgvector/pgvector:pg16
+     environment:
+       POSTGRES_DB: rag_db
+       POSTGRES_USER: rag_user
+       POSTGRES_PASSWORD: rag_password
+     volumes:
+       - ./postgres_data:/var/lib/postgresql/data
+     ports:
+       - "5432:5432"
+   ```
+
+2. **Обновить embedder/vector_db.py:**
+   - Заменить `qdrant-client` на `psycopg2` / `asyncpg`
+   - Использовать pgvector extension для векторного поиска
+   - Создать таблицу с колонкой типа `vector(2304)` для embeddings
+   - Использовать HNSW или IVFFlat индексы для быстрого поиска
+
+3. **Схема таблицы:**
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   
+   CREATE TABLE documents (
+     id BIGINT PRIMARY KEY,
+     file_path TEXT NOT NULL,
+     chunk_index INTEGER NOT NULL,
+     content TEXT NOT NULL,
+     embedding vector(2304),
+     created_at TIMESTAMP DEFAULT NOW()
+   );
+   
+   CREATE INDEX ON documents USING hnsw (embedding vector_cosine_ops);
+   ```
+
+4. **Обновить RAG API:**
+   - Использовать SQL-запросы для поиска с `<=>` оператором (cosine distance)
+   - Пример: `SELECT *, 1 - (embedding <=> $1) AS similarity FROM documents ORDER BY embedding <=> $1 LIMIT 5`
+
+**Преимущества:**
+- ✅ Меньше памяти (нет отдельного Qdrant процесса)
+- ✅ Проще backup/восстановление
+- ✅ Поддержка транзакций
+- ✅ Интеграция с существующими PostgreSQL инструментами
+
+**Недостатки:**
+- ⚠️ Может быть медленнее для очень больших датасетов (миллионы векторов)
+- ⚠️ Требует ручной настройки индексов для оптимизации
+
 ## 📚 Полезные ссылки
 
 - [Qdrant Documentation](https://qdrant.tech/documentation/)
 - [Ollama Models](https://ollama.com/library)
 - [Open WebUI](https://github.com/open-webui/open-webui)
 - [Sentence Transformers](https://www.sbert.net/)
+- [pgvector Extension](https://github.com/pgvector/pgvector)
 
 ## 📄 Лицензия
 
