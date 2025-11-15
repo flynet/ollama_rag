@@ -1,0 +1,6 @@
+# llama-cpp-python will be built with CMake; we request system build with cuBLAS
+llama-cpp-python
+qdrant-client
+watchdog
+numpy
+
